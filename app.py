@@ -1,3 +1,8 @@
+# ============================================================
+# BANK LOAN APPROVAL PREDICTION
+# Streamlit + Support Vector Machine
+# ============================================================
+
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -8,7 +13,7 @@ from sklearn.metrics import accuracy_score
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
@@ -19,46 +24,50 @@ st.set_page_config(
 
 
 # ============================================================
-# DATASET
+# FIND DATASET
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_FILE = BASE_DIR / "bankloandata.csv"
+
+
+def find_dataset():
+    """
+    Find the loan dataset inside the Streamlit project.
+    """
+
+    # Expected filename
+    expected_file = BASE_DIR / "bankloandata.csv"
+
+    if expected_file.is_file():
+        return expected_file
+
+    # Search the project directory
+    csv_files = list(BASE_DIR.rglob("*.csv"))
+
+    if csv_files:
+        return csv_files[0]
+
+    return None
+
+
+DATA_FILE = find_dataset()
 
 
 # ============================================================
-# LOAD DATA
+# DATASET ERROR HANDLING
 # ============================================================
 
-@st.cache_data
-def load_data():
+if DATA_FILE is None:
 
-    if not DATA_FILE.exists():
-        return None
+    st.error("❌ Dataset file not found.")
 
-    return pd.read_csv(DATA_FILE)
+    st.write("Streamlit is currently running from:")
 
+    st.code(str(BASE_DIR))
 
-loan_dataset = load_data()
+    st.write("No CSV file was found in this project.")
 
-
-# ============================================================
-# CHECK DATASET
-# ============================================================
-
-if loan_dataset is None:
-
-    st.error("Dataset file not found.")
-
-    st.write(
-        "The application is looking for:"
-    )
-
-    st.code(str(DATA_FILE))
-
-    st.write(
-        "Your GitHub repository must contain:"
-    )
+    st.write("Your GitHub repository should contain:")
 
     st.code(
         """
@@ -74,7 +83,30 @@ loan-approval-prediction/
 
 
 # ============================================================
-# CHECK DATASET COLUMNS
+# LOAD DATASET
+# ============================================================
+
+@st.cache_data
+def load_data(file_path):
+
+    return pd.read_csv(file_path)
+
+
+try:
+
+    loan_dataset = load_data(DATA_FILE)
+
+except Exception as error:
+
+    st.error("❌ Unable to read the dataset.")
+
+    st.exception(error)
+
+    st.stop()
+
+
+# ============================================================
+# CHECK REQUIRED COLUMNS
 # ============================================================
 
 required_columns = [
@@ -103,18 +135,22 @@ missing_columns = [
 
 if missing_columns:
 
-    st.error("Required columns are missing.")
+    st.error("❌ Dataset format is incorrect.")
 
-    st.write("Missing columns:")
+    st.write("The following columns are missing:")
 
     for column in missing_columns:
         st.write(f"- {column}")
+
+    st.write("Columns found in your dataset:")
+
+    st.write(list(loan_dataset.columns))
 
     st.stop()
 
 
 # ============================================================
-# TRAIN MODEL
+# TRAIN MACHINE LEARNING MODEL
 # ============================================================
 
 @st.cache_resource
@@ -122,16 +158,25 @@ def train_model(data):
 
     df = data.copy()
 
+    # --------------------------------------------------------
     # Remove missing values
+    # --------------------------------------------------------
+
     df = df.dropna()
 
-    # Loan Status
+    # --------------------------------------------------------
+    # Encode target variable
+    # --------------------------------------------------------
+
     df["Loan_Status"] = df["Loan_Status"].map({
         "N": 0,
         "Y": 1
     })
 
-    # Dependents
+    # --------------------------------------------------------
+    # Encode Dependents
+    # --------------------------------------------------------
+
     df["Dependents"] = df["Dependents"].replace(
         "3+",
         "4"
@@ -142,38 +187,56 @@ def train_model(data):
         errors="coerce"
     )
 
-    # Gender
+    # --------------------------------------------------------
+    # Encode Gender
+    # --------------------------------------------------------
+
     df["Gender"] = df["Gender"].map({
         "Male": 1,
         "Female": 0
     })
 
-    # Married
+    # --------------------------------------------------------
+    # Encode Married
+    # --------------------------------------------------------
+
     df["Married"] = df["Married"].map({
         "Yes": 1,
         "No": 0
     })
 
-    # Education
+    # --------------------------------------------------------
+    # Encode Education
+    # --------------------------------------------------------
+
     df["Education"] = df["Education"].map({
         "Graduate": 1,
         "Not Graduate": 0
     })
 
-    # Self Employed
+    # --------------------------------------------------------
+    # Encode Self Employed
+    # --------------------------------------------------------
+
     df["Self_Employed"] = df["Self_Employed"].map({
         "Yes": 1,
         "No": 0
     })
 
-    # Property Area
+    # --------------------------------------------------------
+    # Encode Property Area
+    # --------------------------------------------------------
+
     df["Property_Area"] = df["Property_Area"].map({
         "Rural": 0,
         "Semiurban": 1,
         "Urban": 2
     })
 
-    # Model features
+    # --------------------------------------------------------
+    # Features
+    # --------------------------------------------------------
+
     feature_columns = [
         "Gender",
         "Married",
@@ -188,56 +251,78 @@ def train_model(data):
         "Property_Area"
     ]
 
+    # --------------------------------------------------------
     # Remove invalid rows
+    # --------------------------------------------------------
+
     df = df.dropna(
         subset=feature_columns + ["Loan_Status"]
     )
 
-    # Features
+    # --------------------------------------------------------
+    # X and Y
+    # --------------------------------------------------------
+
     X = df[feature_columns]
 
-    # Target
-    y = df["Loan_Status"]
+    Y = df["Loan_Status"]
 
-    # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(
+    # --------------------------------------------------------
+    # Train/Test Split
+    # --------------------------------------------------------
+
+    X_train, X_test, Y_train, Y_test = train_test_split(
         X,
-        y,
+        Y,
         test_size=0.1,
-        stratify=y,
+        stratify=Y,
         random_state=2
     )
 
-    # SVM model
-    model = SVC(
+    # --------------------------------------------------------
+    # Support Vector Machine
+    # --------------------------------------------------------
+
+    classifier = SVC(
         kernel="linear"
     )
 
-    model.fit(
+    # Train model
+    classifier.fit(
         X_train,
-        y_train
+        Y_train
     )
 
-    # Training prediction
-    train_prediction = model.predict(X_train)
+    # --------------------------------------------------------
+    # Training Accuracy
+    # --------------------------------------------------------
 
-    train_accuracy = accuracy_score(
-        y_train,
-        train_prediction
+    X_train_prediction = classifier.predict(
+        X_train
     )
 
-    # Testing prediction
-    test_prediction = model.predict(X_test)
+    training_accuracy = accuracy_score(
+        Y_train,
+        X_train_prediction
+    )
+
+    # --------------------------------------------------------
+    # Test Accuracy
+    # --------------------------------------------------------
+
+    X_test_prediction = classifier.predict(
+        X_test
+    )
 
     test_accuracy = accuracy_score(
-        y_test,
-        test_prediction
+        Y_test,
+        X_test_prediction
     )
 
     return (
-        model,
+        classifier,
         feature_columns,
-        train_accuracy,
+        training_accuracy,
         test_accuracy,
         len(df)
     )
@@ -250,16 +335,16 @@ def train_model(data):
 try:
 
     (
-        model,
+        classifier,
         feature_columns,
-        train_accuracy,
+        training_accuracy,
         test_accuracy,
-        training_records
+        records_used
     ) = train_model(loan_dataset)
 
 except Exception as error:
 
-    st.error("Model training failed.")
+    st.error("❌ Model training failed.")
 
     st.exception(error)
 
@@ -267,7 +352,7 @@ except Exception as error:
 
 
 # ============================================================
-# HEADER
+# TITLE
 # ============================================================
 
 st.title("🏦 Bank Loan Approval Prediction")
@@ -278,8 +363,9 @@ st.write(
 )
 
 st.info(
-    "This application is an educational machine-learning "
-    "project using a Support Vector Machine (SVM)."
+    "This is an educational machine-learning application. "
+    "The prediction should not be treated as an actual "
+    "banking or financial decision."
 )
 
 
@@ -290,7 +376,7 @@ st.info(
 st.sidebar.header("Model Information")
 
 st.sidebar.write(
-    "**Algorithm:** Support Vector Machine"
+    "**Model:** Support Vector Machine"
 )
 
 st.sidebar.write(
@@ -299,7 +385,7 @@ st.sidebar.write(
 
 st.sidebar.metric(
     "Training Accuracy",
-    f"{train_accuracy * 100:.2f}%"
+    f"{training_accuracy * 100:.2f}%"
 )
 
 st.sidebar.metric(
@@ -308,11 +394,11 @@ st.sidebar.metric(
 )
 
 st.sidebar.write(
-    f"**Training Records:** {training_records}"
+    f"**Records Used:** {records_used}"
 )
 
 st.sidebar.write(
-    "**Dataset:** bankloandata.csv"
+    f"**Dataset:** {DATA_FILE.name}"
 )
 
 
@@ -405,18 +491,12 @@ with right_column:
 
 
 # ============================================================
-# CONVERT USER INPUT
+# CONVERT INPUTS
 # ============================================================
 
-gender_value = (
-    1 if gender == "Male"
-    else 0
-)
+gender_value = 1 if gender == "Male" else 0
 
-married_value = (
-    1 if married == "Yes"
-    else 0
-)
+married_value = 1 if married == "Yes" else 0
 
 dependents_value = (
     4 if dependents == "3+"
@@ -441,7 +521,7 @@ property_area_value = {
 
 
 # ============================================================
-# CREATE INPUT DATA
+# CREATE INPUT DATAFRAME
 # ============================================================
 
 input_data = pd.DataFrame(
@@ -476,7 +556,7 @@ if st.button(
     width="stretch"
 ):
 
-    prediction = model.predict(
+    prediction = classifier.predict(
         input_data
     )
 
@@ -488,7 +568,7 @@ if st.button(
 
         st.write(
             "The machine-learning model predicts that "
-            "this loan application is likely to be approved."
+            "this application is likely to be approved."
         )
 
     else:
@@ -499,7 +579,7 @@ if st.button(
 
         st.write(
             "The machine-learning model predicts that "
-            "this loan application is likely to be rejected."
+            "this application is likely to be rejected."
         )
 
 
@@ -514,10 +594,22 @@ with st.expander("View Applicant Information"):
     st.write(f"**Dependents:** {dependents}")
     st.write(f"**Education:** {education}")
     st.write(f"**Self Employed:** {self_employed}")
-    st.write(f"**Applicant Income:** {applicant_income}")
-    st.write(f"**Coapplicant Income:** {coapplicant_income}")
-    st.write(f"**Loan Amount:** {loan_amount}")
-    st.write(f"**Loan Amount Term:** {loan_term}")
+
+    st.write(
+        f"**Applicant Income:** {applicant_income}"
+    )
+
+    st.write(
+        f"**Coapplicant Income:** {coapplicant_income}"
+    )
+
+    st.write(
+        f"**Loan Amount:** {loan_amount}"
+    )
+
+    st.write(
+        f"**Loan Amount Term:** {loan_term}"
+    )
 
     credit_status = (
         "Good Credit History"
@@ -541,11 +633,11 @@ with st.expander("View Applicant Information"):
 with st.expander("Dataset Information"):
 
     st.write(
-        "**Dataset:** bankloandata.csv"
+        f"**Dataset File:** {DATA_FILE.name}"
     )
 
     st.write(
-        f"**Original Records:** {loan_dataset.shape[0]}"
+        f"**Original Rows:** {loan_dataset.shape[0]}"
     )
 
     st.write(
@@ -553,7 +645,7 @@ with st.expander("Dataset Information"):
     )
 
     st.write(
-        f"**Records Used for Training:** {training_records}"
+        f"**Rows Used for Training:** {records_used}"
     )
 
 
@@ -565,5 +657,5 @@ st.divider()
 
 st.caption(
     "Bank Loan Approval Prediction | "
-    "SVM Machine Learning Model | Streamlit"
+    "Support Vector Machine | Streamlit"
 )
